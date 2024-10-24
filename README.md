@@ -14,8 +14,8 @@ You can run this in your **Desktop Terminal** or **Android Termux**
 Note: This will also ensure your modem will reconnect to 5G as soon as possible in areas with problematic cell receptions.
 
 ## Requirements
-- Install Go Lang: https://go.dev/doc/install
-- clone this repo: https://github.com/rpfilomeno/vn007go ([how-to](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository))
+- Install Go Lang: [https://go.dev/doc/install](https://go.dev/doc/install)
+- clone this repo: [https://github.com/rpfilomeno/vn007go](https://github.com/rpfilomeno/vn007go) ([how-to](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository))
 - copy the file named `.env.sample` to `.env`
 - edit your `.env` file to match your router setup
 - download dependecies
