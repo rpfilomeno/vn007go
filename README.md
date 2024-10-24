@@ -7,11 +7,11 @@
 This Auto restart the VN007 Router if the 5G Frequency is missing. 
 
 
-Due to a bug in telco it will keep charge your SIM data balance if although you are subscribed to Unli 5G promo. Normally it should disconnect automatically if **Network Mode** is set to **5G NSA Only** and prevent unwanted data charges however sometimes it doesnt. 
+Due to a bug in the telco, it will charge your SIM data balance even if you are subscribed to Unli 5G promo. Normally it should disconnect automatically if **Network Mode** is set to **5G NSA Only** and prevent unwanted data charges however sometimes it doesn't. 
 
 You can run this in your **Desktop Terminal** or **Android Termux**
 
-Note: This will also make sure your modem will reconnect to 5G soon as possible in areas with problematic cell receptions.
+Note: This will also ensure your modem will reconnect to 5G as soon as possible in areas with problematic cell receptions.
 
 ## Requirements
 - Install Go Lang: https://go.dev/doc/install
