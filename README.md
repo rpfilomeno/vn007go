@@ -35,4 +35,7 @@ go build .
 ## Pre-compiled download
 - [Windows 64-bit release](https://github.com/rpfilomeno/vn007go/releases/tag/release)
 - Download the [.env.sample config file](https://raw.githubusercontent.com/rpfilomeno/vn007go/refs/heads/main/.env.sample) then edit and rename it to `.env` for use with this release.
+- Edit your `.env` based on your router settings. You can find valuesof  **SESSION_ID** and **PASSWORD_HASH** hash using [Chrome's Developer Tools](https://developer.chrome.com/docs/devtools) during login.
+![image](https://github.com/user-attachments/assets/867e7317-6cfd-4675-a840-1ae5b825f44e)
+
 
