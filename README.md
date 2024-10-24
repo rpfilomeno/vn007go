@@ -32,5 +32,7 @@ go build .
 ```
 - to use the  executable binary (vn007go.exe) makes sure your .env file is on the same folder
 
-
+## Pre-compiled download
+- [Windows 64-bit release](https://github.com/rpfilomeno/vn007go/releases/tag/release)
+- Download the [.env.sample config file](https://raw.githubusercontent.com/rpfilomeno/vn007go/refs/heads/main/.env.sample) then edit and rename it to `.env` for use with this release.
 
