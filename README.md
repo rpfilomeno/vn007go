@@ -15,7 +15,7 @@ Note: This will also make sure your modem will reconnect to 5G soon as possible 
 
 ## Requirements
 - Install Go Lang: https://go.dev/doc/install
-- clone this repo: https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository
+- clone this repo: https://github.com/rpfilomeno/vn007go ([how-to](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository))
 - copy the file named `.env.sample` to `.env`
 - edit your `.env` file to match your router setup
 - download dependecies
