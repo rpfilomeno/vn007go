@@ -237,12 +237,12 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			continue
 		}
 
-		uptimeStr := responseData.Uptime.(string)
-		uptime, err := strconv.Atoi(uptimeStr)
+		uptime, upterr := strconv.Atoi(responseData.Uptime.(string))
+		_, freqerr := strconv.Atoi(responseData.FREQ_5G.(string))
 
-		program.Send(uptimeUpdateMsg(uptimeStr))
-		if (uptime > 300) && (err == nil) {
-			if responseData.FREQ_5G == nil {
+		program.Send(uptimeUpdateMsg(responseData.Uptime.(string)))
+		if (uptime > 300) && (upterr == nil) {
+			if freqerr != nil {
 				program.Send(freqUpdateMsg("NONE"))
 				log.Warn("FREQ_5G not present, initiating reboot")
 
@@ -255,14 +255,13 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 					log.Info("reboot sequence completed")
 				}
 			} else {
-				freq5GStr := fmt.Sprintf("%v", responseData.FREQ_5G)
-				program.Send(freqUpdateMsg(freq5GStr))
-				log.Info("monitoring check passed", "FREQ_5G", freq5GStr)
+				program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
+				log.Info("monitoring check passed", "FREQ_5G", responseData.FREQ_5G)
 			}
 		} else {
 			uptimeWait := 300 - uptime
 			log.Info("waiting", fmt.Sprintf("%v", uptimeWait), "secs uptime before checking")
-			log.Debug("Uptime", fmt.Sprintf("%v secs", uptimeStr))
+			log.Debug("Uptime", fmt.Sprintf("%v secs", responseData.Uptime))
 		}
 
 		time.Sleep(baseDelay)
