@@ -135,6 +135,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		uptimeValue, err := strconv.Atoi(string(msg))
 		m.uptimeValue = uptimeValue
 		if err != nil {
+
 			m.uptimeValue = 0
 		}
 
@@ -172,14 +173,15 @@ func (m model) View() string {
 
 	// Header with Uptime value
 	uptimeDisplay := "0"
+	hh, mm, ss := secondsToTime(m.uptimeValue)
 	if m.uptimeValue < 300 {
 		uptimeDisplay = freq5GStyle.Copy().
 			Foreground(lipgloss.Color("211")). // pink
-			Render(fmt.Sprintf("%ss", strconv.Itoa(m.uptimeValue)))
+			Render(fmt.Sprintf("%d:%02d:%02d\n", hh, mm, ss))
 	} else {
 		uptimeDisplay = freq5GStyle.Copy().
 			Foreground(lipgloss.Color("82")). // lime
-			Render(fmt.Sprintf("%ss", strconv.Itoa(m.uptimeValue)))
+			Render(fmt.Sprintf("%d:%02d:%02d", hh, mm, ss))
 	}
 
 	// Header with Uptime value
@@ -208,6 +210,13 @@ func calculateBackoff(attempt int) time.Duration {
 		delay = maxDelay
 	}
 	return delay
+}
+
+func secondsToTime(seconds int) (hours, minutes, secs int) {
+	hours = seconds / 3600
+	minutes = (seconds % 3600) / 60
+	secs = seconds % 60
+	return
 }
 
 func monitorService(program *tea.Program, client *http.Client, url string) {
@@ -268,6 +277,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 					log.Info("reboot sequence completed")
 				}
 			} else {
+
 				program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
 				log.Info("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
 			}
