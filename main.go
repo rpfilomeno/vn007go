@@ -52,6 +52,15 @@ type uptimeUpdateMsg string
 type lastRebootTimeMsg string
 type logMsg string
 
+type LoginPayload struct {
+	Cmd           int    `json:"cmd"`
+	Method        string `json:"method"`
+	Language      string `json:"language"`
+	SessionId     string `json:"sessionId"`
+	Username      string `json:"username"`
+	Passwd        string `json:"passwd"`
+	IsAutoUpgrade string `json:"isAutoUpgrade"`
+}
 type MonitorPayload struct {
 	Cmd       int    `json:"cmd"`
 	Method    string `json:"method"`
@@ -60,14 +69,11 @@ type MonitorPayload struct {
 }
 
 type RebootPayload struct {
-	Cmd           int    `json:"cmd"`
-	RebootType    int    `json:"rebootType"`
-	Method        string `json:"method"`
-	SessionId     string `json:"sessionId"`
-	Username      string `json:"username"`
-	Passwd        string `json:"passwd"`
-	IsAutoUpgrade string `json:"isAutoUpgrade"`
-	Language      string `json:"language"`
+	Cmd        int    `json:"cmd"`
+	RebootType int    `json:"rebootType"`
+	Method     string `json:"method"`
+	SessionId  string `json:"sessionId"`
+	Language   string `json:"language"`
 }
 
 type ResponseData struct {
@@ -227,15 +233,22 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		SessionId: "",
 	}
 
-	rebootPayload := RebootPayload{
-		Cmd:           6,
-		RebootType:    1,
+	loginPayload := LoginPayload{
+		Cmd:           100,
 		Method:        "POST",
 		SessionId:     os.Getenv("SESSION_ID"),
 		Username:      os.Getenv("USERNAME"),
 		Passwd:        os.Getenv("PASSWORD_HASH"),
 		IsAutoUpgrade: "0",
 		Language:      "EN",
+	}
+
+	rebootPayload := RebootPayload{
+		Cmd:        6,
+		RebootType: 1,
+		Method:     "POST",
+		SessionId:  os.Getenv("SESSION_ID"),
+		Language:   "EN",
 	}
 
 	for {
@@ -268,14 +281,23 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 				program.Send(freqUpdateMsg("NONE"))
 				log.Warn("FREQ_5G not present, initiating reboot")
 
-				_, err := sendRequestWithRetry(program, client, url, rebootPayload, true)
-				if err != nil {
-					log.Error("reboot sequence failed", "error", err)
+				responseData, err = sendRequestWithRetry(program, client, url, loginPayload, true)
+
+				if (err != nil) || (!responseData.Success) {
+					log.Error("login failed", "error", err)
 					time.Sleep(baseDelay)
+					continue
 				} else {
-					program.Send(lastRebootTimeMsg(time.Now().String()))
-					log.Info("reboot sequence completed")
+					_, err = sendRequestWithRetry(program, client, url, rebootPayload, true)
+					if err != nil {
+						log.Error("reboot sequence failed", "error", err)
+						time.Sleep(baseDelay)
+					} else {
+						program.Send(lastRebootTimeMsg(time.Now().String()))
+						log.Info("reboot sequence completed")
+					}
 				}
+
 			} else {
 
 				program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
