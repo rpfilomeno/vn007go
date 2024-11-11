@@ -83,7 +83,7 @@ type ResponseData struct {
 }
 
 const (
-	maxRetries    = 5
+	maxRetries    = 1
 	baseDelay     = 3 * time.Second
 	maxDelay      = 32 * time.Second
 	rebootTimeout = 30 * time.Second
@@ -252,7 +252,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 	}
 
 	for {
-		responseData, err := sendRequestWithRetry(program, client, url, monitorPayload, false)
+		responseData, err := sendRequestWithRetry(program, client, url, monitorPayload, "Monitoring")
 		if err != nil {
 			log.Error("monitoring cycle failed", "error", err)
 			time.Sleep(baseDelay)
@@ -281,14 +281,14 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 				program.Send(freqUpdateMsg("NONE"))
 				log.Warn("FREQ_5G not present, initiating reboot")
 
-				responseData, err = sendRequestWithRetry(program, client, url, loginPayload, true)
+				responseData, err = sendRequestWithRetry(program, client, url, loginPayload, "Login")
 
 				if (err != nil) || (!responseData.Success) {
 					log.Error("login failed", "error", err)
 					time.Sleep(baseDelay)
 					continue
 				} else {
-					_, err = sendRequestWithRetry(program, client, url, rebootPayload, true)
+					_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
 					if err != nil {
 						log.Error("reboot sequence failed", "error", err)
 						time.Sleep(baseDelay)
@@ -313,12 +313,8 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 	}
 }
 
-func sendRequestWithRetry(program *tea.Program, client *http.Client, url string, payload interface{}, isRebootRequest bool) (*ResponseData, error) {
+func sendRequestWithRetry(program *tea.Program, client *http.Client, url string, payload interface{}, reqType string) (*ResponseData, error) {
 	var lastErr error
-	reqType := "Monitoring"
-	if isRebootRequest {
-		reqType = "Reboot"
-	}
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		jsonData, err := json.Marshal(payload)
@@ -355,6 +351,16 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 		}
 
 		var responseData ResponseData
+		log.Debug(fmt.Sprintf("RAW response: %s", body))
+
+		if reqType == "Reboot" && resp.StatusCode == 200 {
+			log.Info("request successful", "type", reqType, "attempt", attempt+1)
+			responseData.Success = true
+			responseData.FREQ_5G = "-"
+			responseData.Uptime = 0
+			return &responseData, nil
+		}
+
 		err = json.Unmarshal(body, &responseData)
 		if err != nil {
 			lastErr = err
@@ -366,10 +372,6 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 
 		if responseData.Success {
 			log.Info("request successful", "type", reqType, "attempt", attempt+1)
-			if isRebootRequest {
-				log.Warn("reboot initiated", "wait_time", rebootTimeout.String())
-				time.Sleep(rebootTimeout)
-			}
 			return &responseData, nil
 		}
 
