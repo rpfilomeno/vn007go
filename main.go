@@ -77,9 +77,10 @@ type RebootPayload struct {
 }
 
 type ResponseData struct {
-	FREQ_5G interface{} `json:"FREQ_5G"`
-	Success bool        `json:"success"`
-	Uptime  interface{} `json:"uptime"`
+	FREQ_5G   interface{} `json:"FREQ_5G"`
+	Success   bool        `json:"success"`
+	Uptime    interface{} `json:"uptime"`
+	SessionId interface{} `json:"sessionId"`
 }
 
 const (
@@ -236,8 +237,8 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 	loginPayload := LoginPayload{
 		Cmd:           100,
 		Method:        "POST",
-		SessionId:     os.Getenv("SESSION_ID"),
-		Username:      os.Getenv("USERNAME"),
+		SessionId:     "",
+		Username:      os.Getenv("UNICOM_USER"),
 		Passwd:        os.Getenv("PASSWORD_HASH"),
 		IsAutoUpgrade: "0",
 		Language:      "EN",
@@ -247,7 +248,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		Cmd:        6,
 		RebootType: 1,
 		Method:     "POST",
-		SessionId:  os.Getenv("SESSION_ID"),
+		SessionId:  "",
 		Language:   "EN",
 	}
 
@@ -288,6 +289,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 					time.Sleep(baseDelay)
 					continue
 				} else {
+					rebootPayload.SessionId = responseData.SessionId.(string)
 					_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
 					if err != nil {
 						log.Error("reboot sequence failed", "error", err)
@@ -305,8 +307,8 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			}
 		} else {
 			uptimeWait := 300 - uptime
-			log.Info("waiting", fmt.Sprintf("%v", uptimeWait), "secs uptime before checking")
-			log.Debug("Uptime", fmt.Sprintf("%v secs", uptimeStr))
+			log.Info("waiting", fmt.Sprintf("%v", uptimeWait))
+			log.Debug("Uptime", fmt.Sprintf("%v", uptimeStr))
 		}
 
 		time.Sleep(baseDelay)
@@ -329,7 +331,7 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 
 		req.Header.Set("Content-Type", "application/json")
 
-		log.Debug("sending request", "type", reqType, "attempt", attempt+1)
+		log.Debug(fmt.Sprintf("REQ <<< %s", jsonData))
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -351,7 +353,7 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 		}
 
 		var responseData ResponseData
-		log.Debug(fmt.Sprintf("RAW response: %s", body))
+		log.Debug(fmt.Sprintf("RESP >>> %s", body))
 
 		if reqType == "Reboot" && resp.StatusCode == 200 {
 			log.Info("request successful", "type", reqType, "attempt", attempt+1)
@@ -368,6 +370,12 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 			log.Error("invalid JSON response", "type", reqType, "attempt", attempt+1, "error", err)
 			time.Sleep(delay)
 			continue
+		}
+
+		if reqType == "Login" && responseData.SessionId == nil {
+			log.Info("authentication failed", "type", reqType, "attempt", attempt+1)
+			responseData.Success = false
+			return &responseData, nil
 		}
 
 		if responseData.Success {
