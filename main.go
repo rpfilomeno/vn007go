@@ -303,9 +303,15 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 			}
 		} else {
+<<<<<<< HEAD
 			uptimeWait := rebootWait - uptime
 			log.Info("wait time", "secs", uptimeWait)
 			log.Debug("uptime", "secs", uptimeStr)
+=======
+			uptimeWait := 300 - uptime
+			log.Info("waiting", fmt.Sprintf("%v", uptimeWait))
+			log.Debug("Uptime", fmt.Sprintf("%v", uptimeStr))
+>>>>>>> 888f4dbd59692465db7b91a8d2d94f5f78cd3dca
 		}
 
 		time.Sleep(baseDelay)
