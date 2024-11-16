@@ -87,9 +87,10 @@ const (
 	maxRetries  = 5
 	baseDelay   = 1 * time.Second
 	maxDelay    = 32 * time.Second
-	rebootSleep = 60 * time.Second
-	rebootWait  = 60 * 4
-	maxLogs     = 1000 // Maximum number of logs to keep in memory
+	rebootSleep = 60 * time.Second //sleep after reboot command is sent
+	rebootWait  = 60 * 4           // max uptime secs before it can reboot
+	recoverTime = 60               //max secs to allow 5g signal to recover before rebooting
+	maxLogs     = 1000             // Maximum number of logs to keep in memory
 )
 
 // Custom writer for capturing log output
@@ -227,6 +228,10 @@ func secondsToTime(seconds int) (hours, minutes, secs int) {
 }
 
 func monitorService(program *tea.Program, client *http.Client, url string) {
+
+	var uptime5g int
+	uptime5g = 0
+
 	monitorPayload := MonitorPayload{
 		Cmd:       133,
 		Method:    "GET",
@@ -254,8 +259,9 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 	for {
 		responseData, err := sendRequestWithRetry(program, client, url, monitorPayload, "Monitoring")
+
 		if err != nil {
-			log.Error("monitoring cycle failed", "error", err)
+			log.Error("monitoring cycle failed", "error", err, "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
@@ -263,53 +269,63 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		uptimeStr := responseData.Uptime.(string)
 		uptime, upterr := strconv.Atoi(uptimeStr)
 
+		if upterr != nil {
+			log.Error("uptime not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
 		program.Send(uptimeUpdateMsg(uptimeStr))
-		if (uptime > rebootWait) && (upterr == nil) {
 
-			doReboot := true
-
-			if responseData.FREQ_5G != nil {
-				_, fqerr := strconv.Atoi(responseData.FREQ_5G.(string))
-				if fqerr == nil {
-					program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
-					log.Info("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
-					doReboot = false
-				}
-			}
-
-			if doReboot {
-
-				program.Send(freqUpdateMsg("NONE"))
-				log.Warn("FREQ_5G not present, initiating reboot")
-
-				responseData, err = sendRequestWithRetry(program, client, url, loginPayload, "Login")
-
-				if (err != nil) || (!responseData.Success) {
-					log.Error("login failed", "error", err)
-					time.Sleep(baseDelay)
-					continue
-				} else {
-					rebootPayload.SessionId = responseData.SessionId.(string)
-					_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
-					if err != nil {
-						log.Error("reboot sequence failed", "error", err)
-						time.Sleep(baseDelay)
-					} else {
-						program.Send(lastRebootTimeMsg(time.Now().String()))
-						log.Info("reboot sequence completed")
-					}
-				}
-				time.Sleep(rebootSleep)
-
-			}
-		} else {
+		if uptime < rebootWait {
 			uptimeWait := rebootWait - uptime
-			log.Info("wait time", "secs", uptimeWait)
-			log.Debug("uptime", "secs", uptimeStr)
+			log.Debug("not enought uptime", "uptime", uptimeStr, "wait for", uptimeWait, "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
+		if responseData.FREQ_5G != nil {
+			_, fqerr := strconv.Atoi(responseData.FREQ_5G.(string))
+			if fqerr == nil {
+				program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
+				log.Debug("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
+				uptime5g = uptime
+				time.Sleep(baseDelay)
+				continue
+			}
+		}
+
+		program.Send(freqUpdateMsg("NONE"))
+
+		timediff := uptime - uptime5g
+		if (timediff) < recoverTime {
+			log.Debug("5G fail threshold not met", "timediff", timediff)
+			time.Sleep(baseDelay)
+			continue
 
 		}
 
-		time.Sleep(baseDelay)
+		log.Warn("FREQ_5G not present, initiating reboot")
+
+		responseData, err = sendRequestWithRetry(program, client, url, loginPayload, "Login")
+
+		if (err != nil) || (!responseData.Success) {
+			log.Error("login failed", "error", err, "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
+		rebootPayload.SessionId = responseData.SessionId.(string)
+		_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
+		if err != nil {
+			log.Error("reboot sequence failed", "error", err, "sleep", rebootSleep)
+			time.Sleep(rebootSleep)
+			continue
+		}
+
+		program.Send(lastRebootTimeMsg(time.Now().Format("January 2, 2006 3:04:05 PM")))
+		log.Info("reboot sequence completed", "sleep", rebootSleep)
+		time.Sleep(rebootSleep)
 	}
 }
 
@@ -329,7 +345,7 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 
 		req.Header.Set("Content-Type", "application/json")
 
-		log.Debug(fmt.Sprintf("REQ <<< %s", jsonData))
+		// log.Debug(fmt.Sprintf("REQ <<< %s", jsonData))
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -351,10 +367,10 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 		}
 
 		var responseData ResponseData
-		log.Debug(fmt.Sprintf("RESP >>> %s", body))
+		// log.Debug(fmt.Sprintf("RESP >>> %s", body))
 
 		if reqType == "Reboot" && resp.StatusCode == 200 {
-			log.Info("request successful", "type", reqType, "attempt", attempt+1)
+			log.Debug("request successful", "type", reqType, "attempt", attempt+1)
 			responseData.Success = true
 			responseData.FREQ_5G = "-"
 			responseData.Uptime = 0
@@ -371,13 +387,13 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 		}
 
 		if reqType == "Login" && responseData.SessionId == nil {
-			log.Info("authentication failed", "type", reqType, "attempt", attempt+1)
+			log.Debug("authentication failed", "type", reqType, "attempt", attempt+1)
 			responseData.Success = false
 			return &responseData, nil
 		}
 
 		if responseData.Success {
-			log.Info("request successful", "type", reqType, "attempt", attempt+1)
+			log.Debug("request successful", "type", reqType, "attempt", attempt+1)
 			return &responseData, nil
 		}
 
