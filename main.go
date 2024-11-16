@@ -89,7 +89,7 @@ const (
 	maxDelay    = 32 * time.Second
 	rebootSleep = 60 * time.Second //sleep after reboot command is sent
 	rebootWait  = 60 * 4           // max uptime secs before it can reboot
-	recoverTime = 60               //max secs to allow 5g signal to recover before rebooting
+	recoverTime = 20               //max secs to allow 5g signal to recover before rebooting
 	maxLogs     = 1000             // Maximum number of logs to keep in memory
 )
 
@@ -279,7 +279,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		if uptime < rebootWait {
 			uptimeWait := rebootWait - uptime
-			log.Debug("not enought uptime", "uptime", uptimeStr, "wait for", uptimeWait, "sleep", baseDelay)
+			log.Debug("not enough uptime", "uptime", uptimeStr, "wait for", uptimeWait, "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
