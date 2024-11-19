@@ -78,6 +78,7 @@ type RebootPayload struct {
 
 type ResponseData struct {
 	FREQ_5G   interface{} `json:"FREQ_5G"`
+	FREQ      interface{} `json:"FREQ"`
 	Success   bool        `json:"success"`
 	Uptime    interface{} `json:"uptime"`
 	SessionId interface{} `json:"sessionId"`
@@ -277,9 +278,17 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		program.Send(uptimeUpdateMsg(uptimeStr))
 
-		if uptime < rebootWait {
-			uptimeWait := rebootWait - uptime
-			log.Debug("not enough uptime", "uptime", uptimeStr, "wait for", uptimeWait, "sleep", baseDelay)
+		if responseData.FREQ == nil {
+			program.Send(freqUpdateMsg("DISCONNECTED"))
+			log.Debug("no data connectiom", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
+		_, fqerr := strconv.Atoi(responseData.FREQ.(string))
+		if fqerr != nil {
+			program.Send(freqUpdateMsg("DISCONNECTED"))
+			log.Debug("no data connectiom", "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
@@ -293,16 +302,15 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 				time.Sleep(baseDelay)
 				continue
 			}
+		} else {
+			program.Send(freqUpdateMsg("NONE"))
 		}
-
-		program.Send(freqUpdateMsg("NONE"))
 
 		timediff := uptime - uptime5g
 		if (timediff) < recoverTime {
-			log.Debug("5G fail threshold not met", "timediff", timediff)
+			log.Debug("5G fail time diff not met", "timediff", timediff)
 			time.Sleep(baseDelay)
 			continue
-
 		}
 
 		log.Warn("FREQ_5G not present, initiating reboot")
