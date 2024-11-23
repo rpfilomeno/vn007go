@@ -90,8 +90,8 @@ const (
 	maxDelay    = 32 * time.Second
 	rebootSleep = 60 * time.Second //sleep after reboot command is sent
 	rebootWait  = 60 * 4           // max uptime secs before it can reboot
-	recoverTime = 20               //max secs to allow 5g signal to recover before rebooting
-	maxLogs     = 1000             // Maximum number of logs to keep in memory
+	recoverTime = 5                //max secs to allow 5g signal to recover before rebooting
+	maxLogs     = 180              // Maximum number of logs to keep in memory
 )
 
 // Custom writer for capturing log output
@@ -308,8 +308,8 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		timediff := uptime - uptime5g
 		if (timediff) < recoverTime {
-			log.Debug("5G fail time diff not met", "timediff", timediff)
-			time.Sleep(baseDelay)
+			log.Warn("5G recovery", "timediff", timediff)
+			//no delay
 			continue
 		}
 
@@ -318,8 +318,8 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		responseData, err = sendRequestWithRetry(program, client, url, loginPayload, "Login")
 
 		if (err != nil) || (!responseData.Success) {
-			log.Error("login failed", "error", err, "sleep", baseDelay)
-			time.Sleep(baseDelay)
+			log.Warn("login failed", "error", err, "sleep", baseDelay)
+			time.Sleep(150)
 			continue
 		}
 
@@ -327,7 +327,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
 		if err != nil {
 			log.Error("reboot sequence failed", "error", err, "sleep", rebootSleep)
-			time.Sleep(rebootSleep)
+			time.Sleep(baseDelay)
 			continue
 		}
 
