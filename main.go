@@ -308,7 +308,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		timediff := uptime - uptime5g
 		if (timediff) < recoverTime {
-			log.Warn("5G recovery", "timediff", timediff)
+			log.Warn("5G recovery", "downtime sec", timediff)
 			//no delay
 			continue
 		}
