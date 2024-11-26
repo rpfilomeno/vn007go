@@ -293,21 +293,19 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			continue
 		}
 
-		if responseData.FREQ_5G != nil {
-			_, fqerr := strconv.Atoi(responseData.FREQ_5G.(string))
-			if fqerr == nil {
-				program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
-				log.Debug("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
-				uptime5g = uptime
-				time.Sleep(baseDelay)
-				continue
-			}
-		} else {
-			program.Send(freqUpdateMsg("NONE"))
+		_, fqerr = strconv.Atoi(responseData.FREQ_5G.(string))
+		if fqerr == nil {
+			program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
+			log.Debug("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
+			uptime5g = uptime
+			time.Sleep(baseDelay)
+			continue
 		}
 
+		program.Send(freqUpdateMsg("NONE"))
+
 		timediff := uptime - uptime5g
-		if (timediff) < recoverTime {
+		if timediff < recoverTime {
 			log.Warn("5G recovery", "downtime sec", timediff)
 			//no delay
 			continue
@@ -319,7 +317,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		if (err != nil) || (!responseData.Success) {
 			log.Warn("login failed", "error", err, "sleep", baseDelay)
-			time.Sleep(150)
+			time.Sleep(180)
 			continue
 		}
 
@@ -327,13 +325,14 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
 		if err != nil {
 			log.Error("reboot sequence failed", "error", err, "sleep", rebootSleep)
-			time.Sleep(baseDelay)
+			time.Sleep(120)
 			continue
 		}
 
 		program.Send(lastRebootTimeMsg(time.Now().Format("January 2, 2006 3:04:05 PM")))
 		log.Info("reboot sequence completed", "sleep", rebootSleep)
 		time.Sleep(rebootSleep)
+		uptime5g = uptime
 	}
 }
 
