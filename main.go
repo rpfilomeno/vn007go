@@ -293,16 +293,22 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			continue
 		}
 
-		_, fqerr = strconv.Atoi(responseData.FREQ_5G.(string))
-		if fqerr == nil {
-			program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
-			log.Debug("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
-			uptime5g = uptime
-			time.Sleep(baseDelay)
-			continue
+		if responseData.FREQ_5G != nil {
+			_, fqerr := strconv.Atoi(responseData.FREQ_5G.(string))
+			if fqerr == nil {
+				program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
+				log.Debug("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
+				uptime5g = uptime
+				time.Sleep(baseDelay)
+				continue
+			}
 		}
 
 		program.Send(freqUpdateMsg("NONE"))
+
+		if uptime5g == 0 {
+			uptime5g = uptime
+		}
 
 		timediff := uptime - uptime5g
 		if timediff < recoverTime {
@@ -332,7 +338,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		program.Send(lastRebootTimeMsg(time.Now().Format("January 2, 2006 3:04:05 PM")))
 		log.Info("reboot sequence completed", "sleep", rebootSleep)
 		time.Sleep(rebootSleep)
-		uptime5g = uptime
+		uptime5g = 0
 	}
 }
 
