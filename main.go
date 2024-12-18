@@ -336,7 +336,7 @@ func (m model) View() string {
 	}
 
 	header := headerStyle.Render(
-		fmt.Sprintf(" %s%s|%s \n %s%s \n %s%.2fMB %s%.2fMB \n %s%s|%s \n %s%s \n press 'q' to stop.",
+		fmt.Sprintf(" %s%s|%s \n %s%s \n %s%.2fMB %s%.2fMB \n %s%s|%s \n  %s%s \npress 'q' to stop.",
 			titleStyle.Render("FREQ: "), freqDisplay, freq5GDisplay,
 			titleStyle.Render("Uptime: "), uptimeDisplay,
 			titleStyle.Render("↑U: "), float32(m.txBytes)*0.000001,
@@ -405,15 +405,25 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			continue
 		}
 
+		if responseData.Uptime == nil {
+			log.Warn("uptime not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
 		uptimeStr := responseData.Uptime.(string)
 		uptime, err := strconv.Atoi(uptimeStr)
-
 		if err != nil {
 			log.Warn("uptime not found", "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
+		program.Send(uptimeUpdateMsg(uptimeStr))
 
+		if responseData.WAN_rX == nil {
+			log.Warn("WAN_rx not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
 		rxStr := responseData.WAN_rX.(string)
 		rx, err := strconv.Atoi(rxStr)
 		if err != nil {
@@ -421,7 +431,13 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			time.Sleep(baseDelay)
 			continue
 		}
+		program.Send(rxMsg(rxStr))
 
+		if responseData.WAN_tX == nil {
+			log.Warn("WAN_tX not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
 		txStr := responseData.WAN_tX.(string)
 		tx, err := strconv.Atoi(txStr)
 		if err != nil {
@@ -429,7 +445,13 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			time.Sleep(baseDelay)
 			continue
 		}
+		program.Send(txMsg(txStr))
 
+		if responseData.RSRQ == nil {
+			log.Warn("RSRQ not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
 		rsrq5tr := responseData.RSRQ.(string)
 		_, err = strconv.Atoi(rsrq5tr)
 		if err != nil {
@@ -437,7 +459,13 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			time.Sleep(baseDelay)
 			continue
 		}
+		program.Send(rsrqMsg(rsrq5tr))
 
+		if responseData.RSRQ_5G == nil {
+			log.Warn("RSRQ 5G not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
 		rsrq5gStr := responseData.RSRQ_5G.(string)
 		_, err = strconv.Atoi(rsrq5gStr)
 		if err != nil {
@@ -445,11 +473,6 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			time.Sleep(baseDelay)
 			continue
 		}
-
-		program.Send(uptimeUpdateMsg(uptimeStr))
-		program.Send(txMsg(txStr))
-		program.Send(rxMsg(rxStr))
-		program.Send(rsrqMsg(rsrq5tr))
 		program.Send(rsrq5gMsg(rsrq5gStr))
 
 		log.Debug("Total traffic", "MB", float32(tx+rx)*0.000001)
@@ -460,7 +483,6 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			time.Sleep(baseDelay)
 			continue
 		}
-
 		_, fqerr := strconv.Atoi(responseData.FREQ.(string))
 		if fqerr != nil {
 			program.Send(freqUpdateMsg("NA"))
@@ -468,10 +490,10 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 			time.Sleep(baseDelay)
 			continue
 		}
-
 		program.Send(freqUpdateMsg(responseData.FREQ.(string)))
 		log.Debug("4G available", "FREQ", responseData.FREQ.(string))
 
+		// The most important check
 		if responseData.FREQ_5G != nil {
 			_, fqerr := strconv.Atoi(responseData.FREQ_5G.(string))
 			if fqerr == nil {
