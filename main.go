@@ -129,7 +129,7 @@ const (
 	rebootSleep  = 60 * time.Second //sleep after reboot command is sent
 	rebootWait   = 60 * 4           // max uptime secs before it can reboot
 	recoverTime  = 120              //max secs to allow 5g signal to recover before rebooting
-	maxLogs      = 10               // Maximum number of logs to keep in memory
+	maxLogs      = 20               // Maximum number of logs to keep in memory
 	recoverBytes = 50000000         // Maximum bytes allowed to be used during %g recovery failure default: 50000000 (50MB)
 )
 
@@ -336,7 +336,7 @@ func (m model) View() string {
 	}
 
 	header := headerStyle.Render(
-		fmt.Sprintf(" %s%s|%s \n %s%s \n %s%.2fMB %s%.2fMB \n %s%s|%s \n  %s%s \npress 'q' to stop.",
+		fmt.Sprintf(" %s%s|%s \n %s%s \n %s%.2fMB %s%.2fMB \n %s%s|%s \n %s%s \n press 'q' to stop.",
 			titleStyle.Render("FREQ: "), freqDisplay, freq5GDisplay,
 			titleStyle.Render("Uptime: "), uptimeDisplay,
 			titleStyle.Render("↑U: "), float32(m.txBytes)*0.000001,
