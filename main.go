@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,29 +19,51 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Define regular expressions for log levels
+var (
+	infoRegex  = regexp.MustCompile(`(?i)\bINFO\b`)
+	warnRegex  = regexp.MustCompile(`(?i)\bWARN\b`)
+	errorRegex = regexp.MustCompile(`(?i)\bERRO\b`)
+	fatalRegex = regexp.MustCompile(`(?i)\bFATA\b`)
+	debugRegex = regexp.MustCompile(`(?i)\bDEBU\b`)
+)
+
+// Define styles using lipgloss or any other styling package
+var (
+	infoStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true) // Green
+	warnStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true) // Yellow
+	errorStyle = lipgloss.NewStyle().Background(lipgloss.Color("9")).Bold(true)  // Red
+	fatalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)  // Red FG
+	debugStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)  // Cyan
+
+)
+
 // Styles
 var (
 	headerStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			PaddingLeft(1).PaddingRight(1)
+			BorderForeground(lipgloss.Color("240"))
 
-	freq5GStyle = lipgloss.NewStyle().
-			Bold(true).
-			PaddingLeft(1)
+	textStyle = lipgloss.NewStyle()
 
 	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("99"))
+			Foreground(lipgloss.Color("99")).Bold(true)
 
 	logStyle = lipgloss.NewStyle().
 			PaddingLeft(2)
+	lastlog string
 )
 
 // Model represents the application state
 type model struct {
 	viewport       viewport.Model
 	logs           []string
+	freqValue      string
 	freq5GValue    string
+	txBytes        int
+	rxBytes        int
+	rsrqValue      int
+	rsrq5GValue    int
 	uptimeValue    int
 	lastRebootTime string
 	ready          bool
@@ -48,9 +71,14 @@ type model struct {
 
 // Message types for the TUI
 type freqUpdateMsg string
+type freq5gUpdateMsg string
 type uptimeUpdateMsg string
 type lastRebootTimeMsg string
 type logMsg string
+type rxMsg string
+type txMsg string
+type rsrqMsg string
+type rsrq5gMsg string
 
 type LoginPayload struct {
 	Cmd           int    `json:"cmd"`
@@ -76,22 +104,33 @@ type RebootPayload struct {
 	Language   string `json:"language"`
 }
 
+type GetInfoPayload struct {
+	Cmd       int    `json:"cmd"`
+	Method    string `json:"method"`
+	SessionId string `json:"sessionId"`
+	Language  string `json:"language"`
+}
 type ResponseData struct {
 	FREQ_5G   interface{} `json:"FREQ_5G"`
 	FREQ      interface{} `json:"FREQ"`
 	Success   bool        `json:"success"`
 	Uptime    interface{} `json:"uptime"`
 	SessionId interface{} `json:"sessionId"`
+	RSRQ      interface{} `json:"RSRQ"`
+	RSRQ_5G   interface{} `json:"RSRQ_5G"`
+	WAN_rX    interface{} `json:"wan_rx_bytes"`
+	WAN_tX    interface{} `json:"wan_tx_bytes"`
 }
 
 const (
-	maxRetries  = 5
-	baseDelay   = 1 * time.Second
-	maxDelay    = 32 * time.Second
-	rebootSleep = 60 * time.Second //sleep after reboot command is sent
-	rebootWait  = 60 * 4           // max uptime secs before it can reboot
-	recoverTime = 5                //max secs to allow 5g signal to recover before rebooting
-	maxLogs     = 180              // Maximum number of logs to keep in memory
+	maxRetries   = 5
+	baseDelay    = 1 * time.Second
+	maxDelay     = 32 * time.Second
+	rebootSleep  = 60 * time.Second //sleep after reboot command is sent
+	rebootWait   = 60 * 4           // max uptime secs before it can reboot
+	recoverTime  = 120              //max secs to allow 5g signal to recover before rebooting
+	maxLogs      = 10               // Maximum number of logs to keep in memory
+	recoverBytes = 50000000         // Maximum bytes allowed to be used during %g recovery failure default: 50000000 (50MB)
 )
 
 // Custom writer for capturing log output
@@ -100,7 +139,11 @@ type logWriter struct {
 }
 
 func (l logWriter) Write(p []byte) (n int, err error) {
-	l.program.Send(logMsg(strings.TrimSpace(string(p))))
+	log := strings.TrimSpace(string(p))
+	if lastlog != log {
+		l.program.Send(logMsg(log))
+		lastlog = log
+	}
 	return len(p), nil
 }
 
@@ -135,17 +178,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case freqUpdateMsg:
+		m.freqValue = string(msg)
+
+	case freq5gUpdateMsg:
 		m.freq5GValue = string(msg)
 
 	case lastRebootTimeMsg:
 		m.lastRebootTime = string(msg)
 
+	case rxMsg:
+		rxBytes, err := strconv.Atoi(string(msg))
+		if err == nil {
+			m.rxBytes = rxBytes
+		}
+
+	case txMsg:
+		txBytes, err := strconv.Atoi(string(msg))
+		if err == nil {
+			m.txBytes = txBytes
+		}
+
+	case rsrqMsg:
+		rsrqValue, err := strconv.Atoi(string(msg))
+		if err == nil {
+			m.rsrqValue = rsrqValue
+		}
+
+	case rsrq5gMsg:
+		rsrq5GValue, err := strconv.Atoi(string(msg))
+		if err == nil {
+			m.rsrq5GValue = rsrq5GValue
+		}
+
 	case uptimeUpdateMsg:
 		uptimeValue, err := strconv.Atoi(string(msg))
-		m.uptimeValue = uptimeValue
-		if err != nil {
-
-			m.uptimeValue = 0
+		if err == nil {
+			m.uptimeValue = uptimeValue
 		}
 
 	case logMsg:
@@ -153,6 +221,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.logs) > maxLogs {
 			m.logs = m.logs[len(m.logs)-maxLogs:]
 		}
+		// Apply color formatting based on log level
+		for i, log := range m.logs {
+			switch {
+			case errorRegex.MatchString(log):
+				m.logs[i] = errorRegex.ReplaceAllString(log, errorStyle.Render("ERRO"))
+			case warnRegex.MatchString(log):
+				m.logs[i] = warnRegex.ReplaceAllString(log, warnStyle.Render("WARN"))
+			case infoRegex.MatchString(log):
+				m.logs[i] = infoRegex.ReplaceAllString(log, infoStyle.Render("INFO"))
+			case debugRegex.MatchString(log):
+				m.logs[i] = debugRegex.ReplaceAllString(log, debugStyle.Render("DEBU"))
+			case fatalRegex.MatchString(log):
+				m.logs[i] = fatalRegex.ReplaceAllString(log, fatalStyle.Render("FATA"))
+
+			}
+		}
+
 		m.viewport.SetContent(strings.Join(m.logs, "\n"))
 		m.viewport.GotoBottom()
 	}
@@ -168,46 +253,97 @@ func (m model) View() string {
 		return "Initializing..."
 	}
 
+	// Header with FREQG value
+	var freqDisplay string
+	if m.freqValue == "" || m.freqValue == "NA" {
+		freqDisplay = textStyle.Background(lipgloss.Color("211")). // pink
+										Render("NA")
+	} else {
+		freqDisplay = textStyle.Foreground(lipgloss.Color("82")). // lime
+										Render(m.freqValue)
+	}
+
 	// Header with FREQ_5G value
 	var freq5GDisplay string
-	if m.freq5GValue == "" || m.freq5GValue == "NONE" {
-		freq5GDisplay = freq5GStyle.Copy().
-			Foreground(lipgloss.Color("211")). // pink
-			Render("NONE")
+	if m.freq5GValue == "" || m.freq5GValue == "NA" {
+		freq5GDisplay = textStyle.Copy().
+			Background(lipgloss.Color("211")). // pink
+			Render("NA")
 	} else {
-		freq5GDisplay = freq5GStyle.Copy().
-			Foreground(lipgloss.Color("82")). // lime
-			Render(m.freq5GValue)
+		freq5GDisplay = textStyle.Foreground(lipgloss.Color("82")). // lime
+										Render(m.freq5GValue)
 	}
 
 	// Header with Uptime value
 	uptimeDisplay := "0"
 	hh, mm, ss := secondsToTime(m.uptimeValue)
 	if m.uptimeValue < rebootWait {
-		uptimeDisplay = freq5GStyle.Copy().
-			Foreground(lipgloss.Color("211")). // pink
-			Render(fmt.Sprintf("%d:%02d:%02d\n", hh, mm, ss))
+		uptimeDisplay = textStyle.Background(lipgloss.Color("211")). // pink
+										Render(fmt.Sprintf("%d:%02d:%02d\n", hh, mm, ss))
 	} else {
-		uptimeDisplay = freq5GStyle.Copy().
-			Foreground(lipgloss.Color("82")). // lime
-			Render(fmt.Sprintf("%d:%02d:%02d", hh, mm, ss))
+		uptimeDisplay = textStyle.Foreground(lipgloss.Color("82")). // lime
+										Render(fmt.Sprintf("%d:%02d:%02d", hh, mm, ss))
+	}
+
+	rsrqDisplay := "0"
+
+	if m.rsrqValue < -15 {
+		rsrqDisplay = textStyle.Background(lipgloss.Color("211")). // pink
+										Render(fmt.Sprintf("%d", m.rsrqValue))
+
+	} else if m.rsrqValue < -10 {
+		rsrqDisplay = textStyle.Foreground(lipgloss.Color("11")). // yellow
+										Render(fmt.Sprintf("%d", m.rsrqValue))
+
+	} else if m.rsrqValue < -5 {
+		rsrqDisplay = textStyle.Foreground(lipgloss.Color("6")). // cyab
+										Render(fmt.Sprintf("%d", m.rsrqValue))
+
+	} else {
+		rsrqDisplay = textStyle.Foreground(lipgloss.Color("82")). // line
+										Render(fmt.Sprintf("%d", m.rsrqValue))
+
+	}
+
+	rsrq5GDisplay := "0"
+
+	if m.rsrq5GValue <= -15 {
+		rsrq5GDisplay = textStyle.Background(lipgloss.Color("211")). // pink
+										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+
+	} else if m.rsrq5GValue <= -10 {
+		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("10")). // yellow
+										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+
+	} else if m.rsrq5GValue <= -5 {
+		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("6")). // cyab
+										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+
+	} else {
+		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("82")). // line
+										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+
 	}
 
 	// Header with Uptime value
 	rebootDisplay := "NONE"
 	if m.lastRebootTime != "NONE" {
-		rebootDisplay = freq5GStyle.Copy().
-			Foreground(lipgloss.Color("211")). // pink
-			Render(fmt.Sprintf("%ss", m.lastRebootTime))
+		rebootDisplay = textStyle.Foreground(lipgloss.Color("211")). // pink
+										Render(fmt.Sprintf("%ss", m.lastRebootTime))
 	} else {
-		rebootDisplay = freq5GStyle.Copy().
-			Foreground(lipgloss.Color("82")). // lime
-			Render("NONE")
+		rebootDisplay = textStyle.Foreground(lipgloss.Color("82")). // lime
+										Render("NONE")
 	}
 
 	header := headerStyle.Render(
-		fmt.Sprintf("%s%s\n %s%s\n%s%s\npress 'q' to stop.", titleStyle.Render("FREQ_5G: "), freq5GDisplay, titleStyle.Render("Uptime: "),
-			uptimeDisplay, titleStyle.Render(" Reboot: "), rebootDisplay))
+		fmt.Sprintf(" %s%s|%s \n %s%s \n %s%.2fMB %s%.2fMB \n %s%s|%s \n  %s%s \npress 'q' to stop.",
+			titleStyle.Render("FREQ: "), freqDisplay, freq5GDisplay,
+			titleStyle.Render("Uptime: "), uptimeDisplay,
+			titleStyle.Render("↑U: "), float32(m.txBytes)*0.000001,
+			titleStyle.Render("↓D: "), float32(m.rxBytes)*0.000001,
+			titleStyle.Render("ᯤ: "), rsrqDisplay, rsrq5GDisplay,
+
+			titleStyle.Render("LastReboot: "), rebootDisplay))
 
 	// Viewport with logs
 	return fmt.Sprintf("Vn007 Auto-Restart\n%s\n%s", header, m.viewport.View())
@@ -231,7 +367,9 @@ func secondsToTime(seconds int) (hours, minutes, secs int) {
 func monitorService(program *tea.Program, client *http.Client, url string) {
 
 	var uptime5g int
+	var bytes5G int
 	uptime5g = 0
+	bytes5G = 0
 
 	monitorPayload := MonitorPayload{
 		Cmd:       133,
@@ -268,18 +406,56 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		}
 
 		uptimeStr := responseData.Uptime.(string)
-		uptime, upterr := strconv.Atoi(uptimeStr)
+		uptime, err := strconv.Atoi(uptimeStr)
 
-		if upterr != nil {
-			log.Error("uptime not found", "sleep", baseDelay)
+		if err != nil {
+			log.Warn("uptime not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
+		rxStr := responseData.WAN_rX.(string)
+		rx, err := strconv.Atoi(rxStr)
+		if err != nil {
+			log.Warn("WAN_rX not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
+		txStr := responseData.WAN_tX.(string)
+		tx, err := strconv.Atoi(txStr)
+		if err != nil {
+			log.Warn("WAN_tX not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
+		rsrq5tr := responseData.RSRQ.(string)
+		_, err = strconv.Atoi(rsrq5tr)
+		if err != nil {
+			log.Warn("RSRQ not found", "sleep", baseDelay)
+			time.Sleep(baseDelay)
+			continue
+		}
+
+		rsrq5gStr := responseData.RSRQ_5G.(string)
+		_, err = strconv.Atoi(rsrq5gStr)
+		if err != nil {
+			log.Warn("RSRQ 5G not found", "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
 
 		program.Send(uptimeUpdateMsg(uptimeStr))
+		program.Send(txMsg(txStr))
+		program.Send(rxMsg(rxStr))
+		program.Send(rsrqMsg(rsrq5tr))
+		program.Send(rsrq5gMsg(rsrq5gStr))
+
+		log.Debug("Total traffic", "MB", float32(tx+rx)*0.000001)
 
 		if responseData.FREQ == nil {
-			program.Send(freqUpdateMsg("DISCONNECTED"))
+			program.Send(freqUpdateMsg("NA"))
 			log.Debug("no data connectiom", "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
@@ -287,32 +463,43 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		_, fqerr := strconv.Atoi(responseData.FREQ.(string))
 		if fqerr != nil {
-			program.Send(freqUpdateMsg("DISCONNECTED"))
+			program.Send(freqUpdateMsg("NA"))
 			log.Debug("no data connectiom", "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
 
+		program.Send(freqUpdateMsg(responseData.FREQ.(string)))
+		log.Debug("4G available", "FREQ", responseData.FREQ.(string))
+
 		if responseData.FREQ_5G != nil {
 			_, fqerr := strconv.Atoi(responseData.FREQ_5G.(string))
 			if fqerr == nil {
-				program.Send(freqUpdateMsg(responseData.FREQ_5G.(string)))
-				log.Debug("monitoring check passed", "FREQ_5G", responseData.FREQ_5G.(string))
+				program.Send(freq5gUpdateMsg(responseData.FREQ_5G.(string)))
+				log.Debug("5G available", "FREQ_5G", responseData.FREQ_5G.(string))
 				uptime5g = uptime
+				bytes5G = tx + rx
 				time.Sleep(baseDelay)
 				continue
 			}
 		}
 
-		program.Send(freqUpdateMsg("NONE"))
+		program.Send(freq5gUpdateMsg("NA"))
 
 		if uptime5g == 0 {
 			uptime5g = uptime
 		}
 
+		if bytes5G == 0 {
+			bytes5G = tx + rx
+		}
+
 		timediff := uptime - uptime5g
-		if timediff < recoverTime {
-			log.Warn("5G recovery", "downtime sec", timediff)
+		bytesdiff := tx + rx - bytes5G
+
+		if (timediff < recoverTime) && bytesdiff < recoverBytes {
+			log.Warn("5G recovery", "downtime(sec)", timediff)
+			log.Warn("4G data used", "MB", float32(bytesdiff)*0.000001)
 			//no delay
 			continue
 		}
@@ -331,7 +518,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
 		if err != nil {
 			log.Error("reboot sequence failed", "error", err, "sleep", rebootSleep)
-			time.Sleep(120)
+			time.Sleep(120 * time.Second)
 			continue
 		}
 
@@ -343,6 +530,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 }
 
 func sendRequestWithRetry(program *tea.Program, client *http.Client, url string, payload interface{}, reqType string) (*ResponseData, error) {
+
 	var lastErr error
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -416,7 +604,7 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 		time.Sleep(delay)
 	}
 
-	return nil, fmt.Errorf("max retries (%d) exceeded: %v", maxRetries, lastErr)
+	return nil, fmt.Errorf("max retries (%d) exceeded with error: %v", maxRetries, lastErr)
 }
 
 func main() {
