@@ -40,18 +40,13 @@ var (
 
 // Styles
 var (
-	headerStyle = lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1).
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240"))
+	headerStyle = lipgloss.NewStyle().Width(40).Margin(1).PaddingLeft(3).
+			Border(lipgloss.DoubleBorder(), true, true, true, true)
 
-	textStyle = lipgloss.NewStyle()
-
-	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("99")).Bold(true)
-
-	logStyle = lipgloss.NewStyle().
-			PaddingLeft(2)
-	lastlog string
+	textStyle  = lipgloss.NewStyle()
+	titleStyle = lipgloss.NewStyle().Bold(true)
+	logStyle   = lipgloss.NewStyle().PaddingLeft(2)
+	lastlog    string
 )
 
 // Model represents the application state
@@ -129,7 +124,7 @@ const (
 	rebootSleep  = 60 * time.Second //sleep after reboot command is sent
 	rebootWait   = 60 * 4           // max uptime secs before it can reboot
 	recoverTime  = 120              //max secs to allow 5g signal to recover before rebooting
-	maxLogs      = 20               // Maximum number of logs to keep in memory
+	maxLogs      = 15               // Maximum number of logs to keep in memory
 	recoverBytes = 50000000         // Maximum bytes allowed to be used during %g recovery failure default: 50000000 (50MB)
 )
 
@@ -164,8 +159,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		headerHeight := 8
-		footerHeight := 0
+		headerHeight := 15
+		footerHeight := 1
 		verticalMarginHeight := headerHeight + footerHeight
 
 		if !m.ready {
@@ -335,18 +330,20 @@ func (m model) View() string {
 										Render("NONE")
 	}
 
-	header := headerStyle.Render(
-		fmt.Sprintf("%s%s|%s%s \n%s%s \n%s%.2fMB %s%.2fMB \n%s%s|%s \n%s%s \npress 'q' to stop.",
-			titleStyle.Render("4G: "), freqDisplay, titleStyle.Render("5G: "), freq5GDisplay,
-			titleStyle.Render("⏱: "), uptimeDisplay,
-			titleStyle.Render("↑U: "), float32(m.txBytes)*0.000001,
-			titleStyle.Render("↓D: "), float32(m.rxBytes)*0.000001,
-			titleStyle.Render("ᯤ: "), rsrqDisplay, rsrq5GDisplay,
+	header := fmt.Sprintf("%s\n%s\n\n%s%s|%s%s \n%s%s \n%s%.2fMB %s%.2fMB \n%s%s|%s \n%s%s \n\n%s",
+		titleStyle.Width(32).Align(lipgloss.Center).Render("Vn007 Auto-Restart"),
+		titleStyle.Width(32).Align(lipgloss.Center).Render("------------------"),
+		titleStyle.Render("4G: "), freqDisplay, titleStyle.Render("5G: "), freq5GDisplay,
+		titleStyle.Render("⏱: "), uptimeDisplay,
+		titleStyle.Render("↑U: "), float32(m.txBytes)*0.000001,
+		titleStyle.Render("↓D: "), float32(m.rxBytes)*0.000001,
+		titleStyle.Render("ᯤ: "), rsrqDisplay, rsrq5GDisplay,
+		titleStyle.Render("⏻: "), rebootDisplay,
+		titleStyle.Width(32).Align(lipgloss.Center).Render("press 'q' to stop."))
 
-			titleStyle.Render("⏻: "), rebootDisplay))
-
-	// Viewport with logs
-	return fmt.Sprintf("Vn007 Auto-Restart\n%s\n%s", header, m.viewport.View())
+	header = headerStyle.Render(header)
+	// Viewport with logsq
+	return fmt.Sprintf("%s\n%s", header, m.viewport.View())
 }
 
 func calculateBackoff(attempt int) time.Duration {
