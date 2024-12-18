@@ -40,7 +40,7 @@ var (
 
 // Styles
 var (
-	headerStyle = lipgloss.NewStyle().
+	headerStyle = lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("240"))
 
@@ -336,14 +336,14 @@ func (m model) View() string {
 	}
 
 	header := headerStyle.Render(
-		fmt.Sprintf(" %s%s|%s \n %s%s \n %s%.2fMB %s%.2fMB \n %s%s|%s \n  %s%s \npress 'q' to stop.",
-			titleStyle.Render("FREQ: "), freqDisplay, freq5GDisplay,
-			titleStyle.Render("Uptime: "), uptimeDisplay,
+		fmt.Sprintf("%s%s|%s%s \n%s%s \n%s%.2fMB %s%.2fMB \n%s%s|%s \n%s%s \npress 'q' to stop.",
+			titleStyle.Render("4G: "), freqDisplay, titleStyle.Render("5G: "), freq5GDisplay,
+			titleStyle.Render("⏱: "), uptimeDisplay,
 			titleStyle.Render("↑U: "), float32(m.txBytes)*0.000001,
 			titleStyle.Render("↓D: "), float32(m.rxBytes)*0.000001,
 			titleStyle.Render("ᯤ: "), rsrqDisplay, rsrq5GDisplay,
 
-			titleStyle.Render("LastReboot: "), rebootDisplay))
+			titleStyle.Render("⏻: "), rebootDisplay))
 
 	// Viewport with logs
 	return fmt.Sprintf("Vn007 Auto-Restart\n%s\n%s", header, m.viewport.View())
