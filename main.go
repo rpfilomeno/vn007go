@@ -273,8 +273,8 @@ func (m model) View() string {
 	uptimeDisplay := "0"
 	hh, mm, ss := secondsToTime(m.uptimeValue)
 	if m.uptimeValue < rebootWait {
-		uptimeDisplay = textStyle.Background(lipgloss.Color("211")). // pink
-										Render(fmt.Sprintf("%d:%02d:%02d\n", hh, mm, ss))
+		uptimeDisplay = textStyle.Foreground(lipgloss.Color("211")). // pink
+										Render(fmt.Sprintf("%d:%02d:%02d", hh, mm, ss))
 	} else {
 		uptimeDisplay = textStyle.Foreground(lipgloss.Color("82")). // lime
 										Render(fmt.Sprintf("%d:%02d:%02d", hh, mm, ss))
@@ -282,7 +282,7 @@ func (m model) View() string {
 
 	rsrqDisplay := "0"
 
-	if m.rsrqValue < -15 {
+	if m.rsrqValue == 0 || m.rsrqValue < -15 {
 		rsrqDisplay = textStyle.Background(lipgloss.Color("211")). // pink
 										Render(fmt.Sprintf("%d", m.rsrqValue))
 
@@ -302,7 +302,7 @@ func (m model) View() string {
 
 	rsrq5GDisplay := "0"
 
-	if m.rsrq5GValue <= -15 {
+	if m.rsrq5GValue == 0 || m.rsrq5GValue <= -15 {
 		rsrq5GDisplay = textStyle.Background(lipgloss.Color("211")). // pink
 										Render(fmt.Sprintf("%d", m.rsrq5GValue))
 
@@ -444,31 +444,27 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		}
 		program.Send(txMsg(txStr))
 
+		rsrq5tr := "0"
 		if responseData.RSRQ == nil {
 			log.Warn("RSRQ not found", "sleep", baseDelay)
-			time.Sleep(baseDelay)
-			continue
-		}
-		rsrq5tr := responseData.RSRQ.(string)
-		_, err = strconv.Atoi(rsrq5tr)
-		if err != nil {
-			log.Warn("RSRQ not found", "sleep", baseDelay)
-			time.Sleep(baseDelay)
-			continue
+		} else {
+			rsrq5tr := responseData.RSRQ.(string)
+			_, err = strconv.Atoi(rsrq5tr)
+			if err != nil {
+				log.Warn("RSRQ not found", "sleep", baseDelay)
+			}
 		}
 		program.Send(rsrqMsg(rsrq5tr))
 
+		rsrq5gStr := "0"
 		if responseData.RSRQ_5G == nil {
 			log.Warn("RSRQ 5G not found", "sleep", baseDelay)
-			time.Sleep(baseDelay)
-			continue
-		}
-		rsrq5gStr := responseData.RSRQ_5G.(string)
-		_, err = strconv.Atoi(rsrq5gStr)
-		if err != nil {
-			log.Warn("RSRQ 5G not found", "sleep", baseDelay)
-			time.Sleep(baseDelay)
-			continue
+		} else {
+			rsrq5gStr := responseData.RSRQ_5G.(string)
+			_, err = strconv.Atoi(rsrq5gStr)
+			if err != nil {
+				log.Warn("RSRQ 5G not found", "sleep", baseDelay)
+			}
 		}
 		program.Send(rsrq5gMsg(rsrq5gStr))
 
@@ -635,7 +631,7 @@ func main() {
 	// Initial model
 	m := model{
 		logs:           make([]string, 0, maxLogs),
-		freq5GValue:    "NONE",
+		freq5GValue:    "NA",
 		uptimeValue:    0,
 		lastRebootTime: "NONE",
 	}
