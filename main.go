@@ -255,7 +255,7 @@ func (m model) View() string {
 										Render("NA")
 	} else {
 		freqDisplay = textStyle.Foreground(lipgloss.Color("82")). // lime
-										Render(m.freqValue)
+										Render(fmt.Sprintf("%7s", m.freqValue))
 	}
 
 	// Header with FREQ_5G value
@@ -266,7 +266,7 @@ func (m model) View() string {
 			Render("NA")
 	} else {
 		freq5GDisplay = textStyle.Foreground(lipgloss.Color("82")). // lime
-										Render(m.freq5GValue)
+										Render(fmt.Sprintf("%7s", m.freq5GValue))
 	}
 
 	// Header with Uptime value
@@ -282,41 +282,41 @@ func (m model) View() string {
 
 	rsrqDisplay := "0"
 
-	if m.rsrqValue == 0 || m.rsrqValue < -15 {
-		rsrqDisplay = textStyle.Background(lipgloss.Color("211")). // pink
-										Render(fmt.Sprintf("%d", m.rsrqValue))
+	if m.rsrqValue < -15 {
+		rsrqDisplay = textStyle.Foreground(lipgloss.Color("#ff38c7")). // pink
+										Render(fmt.Sprintf("%3d ■□□□", m.rsrqValue))
 
-	} else if m.rsrqValue < -10 {
-		rsrqDisplay = textStyle.Foreground(lipgloss.Color("11")). // yellow
-										Render(fmt.Sprintf("%d", m.rsrqValue))
+	} else if m.rsrqValue <= -10 {
+		rsrqDisplay = textStyle.Foreground(lipgloss.Color("#ffd438")). // yellow
+										Render(fmt.Sprintf("%3d ■■□□", m.rsrqValue))
 
-	} else if m.rsrqValue < -5 {
-		rsrqDisplay = textStyle.Foreground(lipgloss.Color("6")). // cyab
-										Render(fmt.Sprintf("%d", m.rsrqValue))
+	} else if m.rsrqValue <= -5 {
+		rsrqDisplay = textStyle.Foreground(lipgloss.Color("#68e1fc")). // cyab
+										Render(fmt.Sprintf("%3d ■■■□", m.rsrqValue))
 
 	} else {
-		rsrqDisplay = textStyle.Foreground(lipgloss.Color("82")). // line
-										Render(fmt.Sprintf("%d", m.rsrqValue))
+		rsrqDisplay = textStyle.Foreground(lipgloss.Color("#80fc68")). // line
+										Render(fmt.Sprintf("%3d ■■■■", m.rsrqValue))
 
 	}
 
 	rsrq5GDisplay := "0"
 
-	if m.rsrq5GValue == 0 || m.rsrq5GValue <= -15 {
-		rsrq5GDisplay = textStyle.Background(lipgloss.Color("211")). // pink
-										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+	if m.rsrq5GValue <= -15 {
+		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("#ff38c7")). // pink
+											Render(fmt.Sprintf("%3d ■□□□", m.rsrq5GValue))
 
-	} else if m.rsrq5GValue <= -10 {
-		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("10")). // yellow
-										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+	} else if m.rsrq5GValue <= -9 {
+		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("#ffd438")). // yellow
+											Render(fmt.Sprintf("%3d ■■□□", m.rsrq5GValue))
 
 	} else if m.rsrq5GValue <= -5 {
-		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("6")). // cyab
-										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("#68e1fc")). // cyab
+											Render(fmt.Sprintf("%3d ■■■□", m.rsrq5GValue))
 
 	} else {
-		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("82")). // line
-										Render(fmt.Sprintf("%d", m.rsrq5GValue))
+		rsrq5GDisplay = textStyle.Foreground(lipgloss.Color("#80fc68")). // line
+											Render(fmt.Sprintf("%3d ■■■■", m.rsrq5GValue))
 
 	}
 
@@ -330,15 +330,14 @@ func (m model) View() string {
 										Render("NONE")
 	}
 
-	header := fmt.Sprintf("%s\n%s\n\n%s%s|%s%s \n%s%s \n%s%.2fMB %s%.2fMB \n%s%s|%s \n%s%s \n\n%s",
+	header := fmt.Sprintf("%s\n%s\n\n%s%s \t   %s%s \n%s%s \t  %s%s \n%s%8.2fMB \t %s%8.2fMB \n%s%s \n%s%s \n\n%s",
 		titleStyle.Width(32).Align(lipgloss.Center).Render("Vn007 Auto-Restart"),
 		titleStyle.Width(32).Align(lipgloss.Center).Render("------------------"),
-		titleStyle.Render("4G: "), freqDisplay, titleStyle.Render("5G: "), freq5GDisplay,
-		titleStyle.Render("⏱: "), uptimeDisplay,
-		titleStyle.Render("↑U: "), float32(m.txBytes)*0.000001,
-		titleStyle.Render("↓D: "), float32(m.rxBytes)*0.000001,
-		titleStyle.Render("ᯤ: "), rsrqDisplay, rsrq5GDisplay,
-		titleStyle.Render("⏻: "), rebootDisplay,
+		titleStyle.Render("4G "), freqDisplay, titleStyle.Render("5G "), freq5GDisplay,
+		titleStyle.Render("ᯤ: "), rsrqDisplay, titleStyle.Render("ᯤ: "), rsrq5GDisplay,
+		titleStyle.Render("↑U"), float32(m.txBytes)*0.000001, titleStyle.Render("↓D"), float32(m.rxBytes)*0.000001,
+		titleStyle.Render("UPtime: "), uptimeDisplay,
+		titleStyle.Render("REboot: "), rebootDisplay,
 		titleStyle.Width(32).Align(lipgloss.Center).Render("press 'q' to stop."))
 
 	header = headerStyle.Render(header)
@@ -446,26 +445,29 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		rsrq5tr := "0"
 		if responseData.RSRQ == nil {
-			log.Warn("RSRQ not found", "sleep", baseDelay)
+			log.Warn("RSRQ not found")
 		} else {
-			rsrq5tr := responseData.RSRQ.(string)
+			rsrq5tr = responseData.RSRQ.(string)
 			_, err = strconv.Atoi(rsrq5tr)
 			if err != nil {
-				log.Warn("RSRQ not found", "sleep", baseDelay)
+				log.Warn("RSRQ not found")
 			}
 		}
+
 		program.Send(rsrqMsg(rsrq5tr))
 
 		rsrq5gStr := "0"
 		if responseData.RSRQ_5G == nil {
 			log.Warn("RSRQ 5G not found", "sleep", baseDelay)
 		} else {
-			rsrq5gStr := responseData.RSRQ_5G.(string)
+			rsrq5gStr = responseData.RSRQ_5G.(string)
 			_, err = strconv.Atoi(rsrq5gStr)
 			if err != nil {
 				log.Warn("RSRQ 5G not found", "sleep", baseDelay)
 			}
+
 		}
+
 		program.Send(rsrq5gMsg(rsrq5gStr))
 
 		log.Debug("Total traffic", "MB", float32(tx+rx)*0.000001)
