@@ -123,9 +123,9 @@ const (
 	maxDelay     = 32 * time.Second
 	rebootSleep  = 60 * time.Second //sleep after reboot command is sent
 	rebootWait   = 60 * 4           // max uptime secs before it can reboot
-	recoverTime  = 120              //max secs to allow 5g signal to recover before rebooting
+	recoverTime  = 5                //max secs to allow 5g signal to recover before rebooting
 	maxLogs      = 15               // Maximum number of logs to keep in memory
-	recoverBytes = 50000000         // Maximum bytes allowed to be used during %g recovery failure default: 50000000 (50MB)
+	recoverBytes = 10000000         // Maximum bytes allowed to be used during %g recovery failure default: 10000000 (10MB)
 )
 
 // Custom writer for capturing log output
@@ -458,12 +458,12 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		rsrq5gStr := "0"
 		if responseData.RSRQ_5G == nil {
-			log.Warn("RSRQ 5G not found", "sleep", baseDelay)
+			log.Warn("RSRQ 5G not found")
 		} else {
 			rsrq5gStr = responseData.RSRQ_5G.(string)
 			_, err = strconv.Atoi(rsrq5gStr)
 			if err != nil {
-				log.Warn("RSRQ 5G not found", "sleep", baseDelay)
+				log.Warn("RSRQ 5G not found")
 			}
 
 		}
@@ -474,14 +474,14 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		if responseData.FREQ == nil {
 			program.Send(freqUpdateMsg("NA"))
-			log.Debug("no data connectiom", "sleep", baseDelay)
+			log.Debug("No Data Connection", "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
 		_, fqerr := strconv.Atoi(responseData.FREQ.(string))
 		if fqerr != nil {
 			program.Send(freqUpdateMsg("NA"))
-			log.Debug("no data connectiom", "sleep", baseDelay)
+			log.Debug("No Data Connection", "sleep", baseDelay)
 			time.Sleep(baseDelay)
 			continue
 		}
