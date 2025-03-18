@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/gen2brain/beeep"
 	"github.com/joho/godotenv"
 )
 
@@ -51,6 +53,7 @@ var (
 
 // Model represents the application state
 type model struct {
+	exePath        string
 	viewport       viewport.Model
 	logs           []string
 	freqValue      string
@@ -216,6 +219,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.logs) > maxLogs {
 			m.logs = m.logs[len(m.logs)-maxLogs:]
 		}
+
+		// Notify on INFO log
+		if strings.Contains(string(msg), "INFO") {
+			err := beeep.Notify("vn007go", string(msg), filepath.Join(m.exePath, "assets/vn007logo.png"))
+			if err != nil {
+				log.Error("notification failed", "error", err)
+			}
+		}
+
 		// Apply color formatting based on log level
 		for i, log := range m.logs {
 			switch {
@@ -391,6 +403,8 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		SessionId:  "",
 		Language:   "EN",
 	}
+
+	log.Info("Starting monitoring service")
 
 	for {
 		responseData, err := sendRequestWithRetry(program, client, url, monitorPayload, "Monitoring")
@@ -630,12 +644,18 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	exePath, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Initial model
 	m := model{
 		logs:           make([]string, 0, maxLogs),
 		freq5GValue:    "NA",
 		uptimeValue:    0,
 		lastRebootTime: "NONE",
+		exePath:        exePath,
 	}
 
 	// Initialize the program
