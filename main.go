@@ -42,7 +42,7 @@ var (
 
 // Styles
 var (
-	headerStyle = lipgloss.NewStyle().Width(40).Margin(1).PaddingLeft(3).
+	headerStyle = lipgloss.NewStyle().Width(40).Margin(1).PaddingLeft(3).PaddingRight(3).
 			Border(lipgloss.DoubleBorder(), true, true, true, true)
 
 	textStyle  = lipgloss.NewStyle()
@@ -129,7 +129,7 @@ const (
 	maxDelay     = 32 * time.Second // Maximum retry delay
 	rebootSleep  = 60 * time.Second // Sleep duration after reboot command
 	rebootWait   = 60 * 4           // Minimum uptime before allowing reboot
-	recoverTime  = 5                // Time allowed for 5G signal recovery
+	recoverTime  = 300              // Time allowed for 5G signal recovery
 	maxLogs      = 15               // Maximum number of logs to keep in memory
 	recoverBytes = 10000000         // Maximum bytes during 5G recovery (10MB)
 )
@@ -406,15 +406,16 @@ func (m model) View() string {
 										Render("NONE")
 	}
 
-	header := fmt.Sprintf("%s\n%s\n\n%s%s \t   %s%s \n%s%s \t  %s%s \n%s%8.2fMB \t %s%8.2fMB \n%s%s \n%s%s \n\n%s",
-		titleStyle.Width(32).Align(lipgloss.Center).Render("Vn007 Auto-Restart"),
-		titleStyle.Width(32).Align(lipgloss.Center).Render("------------------"),
+	header := fmt.Sprintf("%s\n%s\n\n%s%s \t   %s%s \n%s%s \t  %s%s \n%s%8.2fMB \t %s%8.2fMB \n%s%s \n%s%s \n\n%s\n%s",
+		titleStyle.Width(40).Align(lipgloss.Center).Render("Vn007 Auto-Restart"),
+		titleStyle.Width(40).Align(lipgloss.Center).Render("------------------"),
 		titleStyle.Render("4G "), freqDisplay, titleStyle.Render("5G "), freq5GDisplay,
 		titleStyle.Render("ᯤ: "), rsrqDisplay, titleStyle.Render("ᯤ: "), rsrq5GDisplay,
 		titleStyle.Render("↑U"), float32(m.txBytes)*0.000001, titleStyle.Render("↓D"), float32(m.rxBytes)*0.000001,
 		titleStyle.Render("UPtime: "), uptimeDisplay,
 		titleStyle.Render("REboot: "), rebootDisplay,
-		titleStyle.Width(32).Align(lipgloss.Center).Render("press '/q' to stop, '/r' to reboot."))
+		titleStyle.Width(40).Align(lipgloss.Center).Render("press '/q' to stop,"),
+		titleStyle.Width(40).Align(lipgloss.Center).Render("press '/r' to reboot."))
 
 	header = headerStyle.Render(header)
 	// Viewport with logsq
