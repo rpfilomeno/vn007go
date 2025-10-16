@@ -65,6 +65,9 @@ type model struct {
 	uptimeValue    int
 	lastRebootTime string
 	ready          bool
+	inputBuffer    string
+	client         *http.Client
+	url            string
 }
 
 // Message types for the TUI
@@ -78,57 +81,57 @@ type txMsg string
 type rsrqMsg string
 type rsrq5gMsg string
 
+// LoginPayload represents the structure for authentication requests
 type LoginPayload struct {
-	Cmd           int    `json:"cmd"`
-	Method        string `json:"method"`
-	Language      string `json:"language"`
-	SessionId     string `json:"sessionId"`
-	Username      string `json:"username"`
-	Passwd        string `json:"passwd"`
-	IsAutoUpgrade string `json:"isAutoUpgrade"`
+	Cmd           int    `json:"cmd"`           // Command identifier for login
+	Method        string `json:"method"`        // HTTP method (POST)
+	Language      string `json:"language"`      // Interface language
+	SessionId     string `json:"sessionId"`     // Session identifier
+	Username      string `json:"username"`      // Login username
+	Passwd        string `json:"passwd"`        // Password hash
+	IsAutoUpgrade string `json:"isAutoUpgrade"` // Auto upgrade flag
 }
+
+// MonitorPayload represents the structure for monitoring requests
 type MonitorPayload struct {
-	Cmd       int    `json:"cmd"`
-	Method    string `json:"method"`
-	Language  string `json:"language"`
-	SessionId string `json:"sessionId"`
+	Cmd       int    `json:"cmd"`       // Command identifier for monitoring
+	Method    string `json:"method"`    // HTTP method (GET)
+	Language  string `json:"language"`  // Interface language
+	SessionId string `json:"sessionId"` // Session identifier
 }
 
+// RebootPayload represents the structure for reboot requests
 type RebootPayload struct {
-	Cmd        int    `json:"cmd"`
-	RebootType int    `json:"rebootType"`
-	Method     string `json:"method"`
-	SessionId  string `json:"sessionId"`
-	Language   string `json:"language"`
+	Cmd        int    `json:"cmd"`        // Command identifier for reboot
+	RebootType int    `json:"rebootType"` // Type of reboot to perform
+	Method     string `json:"method"`     // HTTP method (POST)
+	SessionId  string `json:"sessionId"`  // Session identifier
+	Language   string `json:"language"`   // Interface language
 }
 
-type GetInfoPayload struct {
-	Cmd       int    `json:"cmd"`
-	Method    string `json:"method"`
-	SessionId string `json:"sessionId"`
-	Language  string `json:"language"`
-}
+// ResponseData represents the structure of API responses
 type ResponseData struct {
-	FREQ_5G   interface{} `json:"FREQ_5G"`
-	FREQ      interface{} `json:"FREQ"`
-	Success   bool        `json:"success"`
-	Uptime    interface{} `json:"uptime"`
-	SessionId interface{} `json:"sessionId"`
-	RSRQ      interface{} `json:"RSRQ"`
-	RSRQ_5G   interface{} `json:"RSRQ_5G"`
-	WAN_rX    interface{} `json:"wan_rx_bytes"`
-	WAN_tX    interface{} `json:"wan_tx_bytes"`
+	FREQ_5G   interface{} `json:"FREQ_5G"`      // 5G frequency
+	FREQ      interface{} `json:"FREQ"`         // 4G frequency
+	Success   bool        `json:"success"`      // Operation success flag
+	Uptime    interface{} `json:"uptime"`       // System uptime
+	SessionId interface{} `json:"sessionId"`    // Session identifier
+	RSRQ      interface{} `json:"RSRQ"`         // 4G Reference Signal Received Quality
+	RSRQ_5G   interface{} `json:"RSRQ_5G"`      // 5G Reference Signal Received Quality
+	WAN_rX    interface{} `json:"wan_rx_bytes"` // WAN received bytes
+	WAN_tX    interface{} `json:"wan_tx_bytes"` // WAN transmitted bytes
 }
 
+// Important constants for application behavior
 const (
-	maxRetries   = 5
-	baseDelay    = 1 * time.Second
-	maxDelay     = 32 * time.Second
-	rebootSleep  = 60 * time.Second //sleep after reboot command is sent
-	rebootWait   = 60 * 4           // max uptime secs before it can reboot
-	recoverTime  = 5                //max secs to allow 5g signal to recover before rebooting
+	maxRetries   = 5                // Maximum number of API retry attempts
+	baseDelay    = 1 * time.Second  // Initial retry delay
+	maxDelay     = 32 * time.Second // Maximum retry delay
+	rebootSleep  = 60 * time.Second // Sleep duration after reboot command
+	rebootWait   = 60 * 4           // Minimum uptime before allowing reboot
+	recoverTime  = 5                // Time allowed for 5G signal recovery
 	maxLogs      = 15               // Maximum number of logs to keep in memory
-	recoverBytes = 10000000         // Maximum bytes allowed to be used during %g recovery failure default: 10000000 (10MB)
+	recoverBytes = 10000000         // Maximum bytes during 5G recovery (10MB)
 )
 
 // Custom writer for capturing log output
@@ -157,8 +160,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "q" || msg.String() == "ctrl+c" {
+		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+		m.inputBuffer += msg.String()
+		if strings.HasSuffix(m.inputBuffer, "/q") {
+			return m, tea.Quit
+		}
+		if strings.HasSuffix(m.inputBuffer, "/r") {
+			m.inputBuffer = "" // Clear buffer to prevent re-triggering
+			return m, m.rebootCmd()
+		}
+		if len(m.inputBuffer) > 2 {
+			m.inputBuffer = m.inputBuffer[len(m.inputBuffer)-2:]
 		}
 
 	case tea.WindowSizeMsg:
@@ -253,6 +267,56 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m model) rebootCmd() tea.Cmd {
+	return func() tea.Msg {
+		go manualReboot(m.client, m.url)
+		return nil
+	}
+}
+
+func manualReboot(client *http.Client, url string) {
+	loginPayload := LoginPayload{
+		Cmd:           100,
+		Method:        "POST",
+		SessionId:     "",
+		Username:      os.Getenv("UNICOM_USER"),
+		Passwd:        os.Getenv("PASSWORD_HASH"),
+		IsAutoUpgrade: "0",
+		Language:      "EN",
+	}
+
+	rebootPayload := RebootPayload{
+		Cmd:        6,
+		RebootType: 1,
+		Method:     "POST",
+		SessionId:  "",
+		Language:   "EN",
+	}
+
+	log.Info("Manual reboot initiated by user")
+
+	responseData, err := sendRequestWithRetry(client, url, loginPayload, "Login")
+
+	if err != nil || (responseData != nil && !responseData.Success) {
+		log.Warn("login failed for manual reboot", "error", err)
+		return
+	}
+
+	if responseData == nil {
+		log.Error("login response was nil for manual reboot")
+		return
+	}
+
+	rebootPayload.SessionId = responseData.SessionId.(string)
+	_, err = sendRequestWithRetry(client, url, rebootPayload, "Reboot")
+	if err != nil {
+		log.Error("manual reboot sequence failed", "error", err)
+		return
+	}
+
+	log.Info("manual reboot sequence completed")
 }
 
 func (m model) View() string {
@@ -350,13 +414,14 @@ func (m model) View() string {
 		titleStyle.Render("↑U"), float32(m.txBytes)*0.000001, titleStyle.Render("↓D"), float32(m.rxBytes)*0.000001,
 		titleStyle.Render("UPtime: "), uptimeDisplay,
 		titleStyle.Render("REboot: "), rebootDisplay,
-		titleStyle.Width(32).Align(lipgloss.Center).Render("press 'q' to stop."))
+		titleStyle.Width(32).Align(lipgloss.Center).Render("press '/q' to stop, '/r' to reboot."))
 
 	header = headerStyle.Render(header)
 	// Viewport with logsq
 	return fmt.Sprintf("%s\n%s", header, m.viewport.View())
 }
 
+// calculateBackoff implements exponential backoff for retries
 func calculateBackoff(attempt int) time.Duration {
 	delay := baseDelay * time.Duration(1<<uint(attempt))
 	if delay > maxDelay {
@@ -365,6 +430,7 @@ func calculateBackoff(attempt int) time.Duration {
 	return delay
 }
 
+// secondsToTime converts seconds into hours, minutes, and seconds
 func secondsToTime(seconds int) (hours, minutes, secs int) {
 	hours = seconds / 3600
 	minutes = (seconds % 3600) / 60
@@ -372,6 +438,12 @@ func secondsToTime(seconds int) (hours, minutes, secs int) {
 	return
 }
 
+// monitorService continuously monitors the router's status and manages reboots
+// It handles:
+// - Monitoring 4G/5G connectivity
+// - Tracking data usage
+// - Managing automatic reboots when 5G connection is lost
+// - Session management and authentication
 func monitorService(program *tea.Program, client *http.Client, url string) {
 
 	var uptime5g int
@@ -407,7 +479,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 	log.Info("Starting monitoring service")
 
 	for {
-		responseData, err := sendRequestWithRetry(program, client, url, monitorPayload, "Monitoring")
+		responseData, err := sendRequestWithRetry(client, url, monitorPayload, "Monitoring")
 
 		if err != nil {
 			log.Error("monitoring cycle failed", "error", err, "sleep", baseDelay)
@@ -502,7 +574,6 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		program.Send(freqUpdateMsg(responseData.FREQ.(string)))
 		log.Debug("4G available", "FREQ", responseData.FREQ.(string))
 
-		// The most important check
 		if responseData.FREQ_5G != nil {
 			_, fqerr := strconv.Atoi(responseData.FREQ_5G.(string))
 			if fqerr == nil {
@@ -537,7 +608,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 
 		log.Warn("FREQ_5G not present, initiating reboot")
 
-		responseData, err = sendRequestWithRetry(program, client, url, loginPayload, "Login")
+		responseData, err = sendRequestWithRetry(client, url, loginPayload, "Login")
 
 		if (err != nil) || (!responseData.Success) {
 			log.Warn("login failed", "error", err, "sleep", baseDelay)
@@ -546,7 +617,7 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 		}
 
 		rebootPayload.SessionId = responseData.SessionId.(string)
-		_, err = sendRequestWithRetry(program, client, url, rebootPayload, "Reboot")
+		_, err = sendRequestWithRetry(client, url, rebootPayload, "Reboot")
 		if err != nil {
 			log.Error("reboot sequence failed", "error", err, "sleep", rebootSleep)
 			time.Sleep(120 * time.Second)
@@ -560,7 +631,13 @@ func monitorService(program *tea.Program, client *http.Client, url string) {
 	}
 }
 
-func sendRequestWithRetry(program *tea.Program, client *http.Client, url string, payload interface{}, reqType string) (*ResponseData, error) {
+// sendRequestWithRetry sends API requests with retry logic
+// It implements:
+// - Exponential backoff
+// - Request marshaling
+// - Response handling
+// - Error management
+func sendRequestWithRetry(client *http.Client, url string, payload interface{}, reqType string) (*ResponseData, error) {
 
 	var lastErr error
 
@@ -638,6 +715,12 @@ func sendRequestWithRetry(program *tea.Program, client *http.Client, url string,
 	return nil, fmt.Errorf("max retries (%d) exceeded with error: %v", maxRetries, lastErr)
 }
 
+// main initializes and runs the application
+// It sets up:
+// - Environment configuration
+// - Logging
+// - TUI (Terminal User Interface)
+// - Monitoring service
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -649,6 +732,10 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Start monitoring service in a goroutine
+	client := &http.Client{Timeout: 10 * time.Second}
+	url := fmt.Sprintf("http://%s/cgi-bin/http.cgi", os.Getenv("IP"))
+
 	// Initial model
 	m := model{
 		logs:           make([]string, 0, maxLogs),
@@ -656,6 +743,8 @@ func main() {
 		uptimeValue:    0,
 		lastRebootTime: "NONE",
 		exePath:        exePath,
+		client:         client,
+		url:            url,
 	}
 
 	// Initialize the program
@@ -670,11 +759,6 @@ func main() {
 	}
 	log.SetReportCaller(false)
 	log.SetTimeFormat("15:04:05")
-
-	// Start monitoring service in a goroutine
-	client := &http.Client{Timeout: 10 * time.Second}
-	//url := "http://192.168.0.1/cgi-bin/http.cgi"
-	url := fmt.Sprintf("http://%s/cgi-bin/http.cgi", os.Getenv("IP"))
 
 	go monitorService(p, client, url)
 
